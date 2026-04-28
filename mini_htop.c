@@ -210,8 +210,8 @@ void print_cpu()
 
 	float usage = get_cpu_usage();
 	bprintf(PAD "%-17s", GREEN "CPU" WHITE ": ");
-	print_slider(usage, 25);
-	bprintf("   %2.1f\%\n", usage);
+	print_slider(usage, 20);
+	bprintf("   %2.1f%%\n", usage); //
 }
 
 void print_mem()
@@ -219,7 +219,7 @@ void print_mem()
 
 	MemInfo mem = get_mem_usage();
 	bprintf(PAD "%-17s", GREEN "Memory" WHITE ": ");
-	print_slider(mem.usage, 25);
+	print_slider(mem.usage, 20);
 	bprintf("  (%.1fGB / %.1fGB)\n", mem.av / 1000000., mem.total / 1000000.);
 }
 
