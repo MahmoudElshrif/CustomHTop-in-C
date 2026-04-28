@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
+#include <termios.h>
+#include <fcntl.h>
 
 #define RED "\x1b[31m"
 #define GREEN "\x1b[32m"
@@ -43,23 +45,41 @@ typedef struct
 
 #define BUFFER_SIZE 8192
 
-static char g_buf[BUFFER_SIZE];
-static int g_pos = 0;
+static char buff[BUFFER_SIZE];
+static int curr_pos = 0;
 
 void bprintf(const char *fmt, ...)
 {
 	va_list args;
 	va_start(args, fmt);
-	g_pos += vsnprintf(g_buf + g_pos, sizeof(g_buf) - g_pos, fmt, args);
+	curr_pos += vsnprintf(buff + curr_pos, sizeof(buff) - curr_pos, fmt, args);
 	va_end(args);
 }
 
 void bflush()
 {
 	printf("\033[H\033[2J");
-	fwrite(g_buf, 1, g_pos, stdout);
+	fwrite(buff, 1, curr_pos, stdout);
 	fflush(stdout);
-	g_pos = 0; // reset buffer
+	curr_pos = 0; // reset buffer
+}
+
+void enableRawMode()
+{
+	struct termios t;
+	tcgetattr(STDIN_FILENO, &t);
+	t.c_lflag &= ~(ICANON | ECHO); // disable line buffering and echo
+	tcsetattr(STDIN_FILENO, TCSANOW, &t);
+	fcntl(STDIN_FILENO, F_SETFL, O_NONBLOCK); // non-blocking reads
+}
+
+void restore_terminal()
+{
+	struct termios t;
+	tcgetattr(STDIN_FILENO, &t);
+	t.c_lflag |= (ICANON | ECHO);
+	tcsetattr(STDIN_FILENO, TCSANOW, &t);
+	printf("\033[H\033[2J");
 }
 
 float get_cpu_usage()
@@ -263,12 +283,20 @@ void print_proccess()
 			snprintf(cmdlinepath, sizeof(cmdlinepath), "/proc/%s/cmdline", entry->d_name);
 			cmdf = fopen(cmdlinepath, "r");
 
+			if (!cmdf)
+			{
+				proccount--;
+				continue;
+			}
 			char procname[34];
 
 			fgets(procname, sizeof(procname), cmdf);
 
 			fclose(cmdf);
 			strncpy(proc.name, procname, sizeof(proc.name));
+			char *space = strchr(proc.name, ' ');
+			if (space)
+				*space = '\0';
 
 			FILE *memf;
 
@@ -276,6 +304,11 @@ void print_proccess()
 			snprintf(statuspath, sizeof(statuspath), "/proc/%s/status", entry->d_name);
 			memf = fopen(statuspath, "r");
 
+			if (!memf)
+			{
+				proccount--;
+				continue;
+			}
 			char memline[256];
 
 			while (fgets(memline, sizeof(memline), memf))
@@ -311,8 +344,22 @@ void print_header()
 	bprintf(PAD CYAN "MiniHTOP\n\n\n");
 }
 
+void handleinput()
+{
+	char c;
+}
+
+int key_pressed()
+{
+	char c;
+	if (read(STDIN_FILENO, &c, 1) == 1)
+		return c;
+	return 0;
+}
+
 int main()
 {
+	enableRawMode();
 	while (1)
 	{
 		clear_screen();
@@ -324,10 +371,14 @@ int main()
 		print_proc_headers();
 		print_proccess();
 
+		if (key_pressed() == 'q')
+		{
+			break;
+		}
 		bflush();
 		fflush(stdout);
-		sleep(1);
+		usleep(500000);
 	}
-
+	restore_terminal();
 	return 0;
 }
